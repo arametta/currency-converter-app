@@ -5,6 +5,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.exactly;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathMatching;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -39,7 +40,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
  *
  * The cache is cleared before each test (@BeforeEach) so that one test's
  * cached rate doesn't satisfy another test's request and skew the WireMock
- * call counts.
+ * call counts. Each test also starts with a default /rest/currencies stub,
+ * since conversions validate codes against it; tests that need a different
+ * list stub it again (the newest WireMock stub wins).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -48,6 +51,15 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
         "management.influx.metrics.export.enabled=false"
 })
 class CurrencyConversionControllerIntegrationTest {
+
+    private static final String DEFAULT_CURRENCIES = """
+            [
+              { "code": "EUR", "name": "Euro", "active": true },
+              { "code": "GBP", "name": "Pound sterling", "active": true },
+              { "code": "JPY", "name": "Japanese yen", "active": true },
+              { "code": "USD", "name": "United States dollar", "active": true }
+            ]
+            """;
 
     private static WireMockServer wireMock;
 
@@ -89,6 +101,7 @@ class CurrencyConversionControllerIntegrationTest {
                 cache.clear();
             }
         }
+        stubCurrencies(DEFAULT_CURRENCIES);
     }
 
     // ---------- happy paths -----------------------------------------------
@@ -219,8 +232,8 @@ class CurrencyConversionControllerIntegrationTest {
                 .andExpect(jsonPath("$.convertedAmount").value(42.00))
                 .andExpect(jsonPath("$.exchangeRate").value(1));
 
-        // Zero calls of any kind — verifies the short-circuit.
-        wireMock.verify(exactly(0), getRequestedFor(urlPathEqualTo("/rest/rates/EUR/USD")));
+        // Zero rate lookups — verifies the short-circuit.
+        wireMock.verify(exactly(0), getRequestedFor(urlPathMatching("/rest/rates/.*")));
     }
 
     // ---------- upstream failure ------------------------------------------
@@ -240,10 +253,15 @@ class CurrencyConversionControllerIntegrationTest {
     }
 
     @Test
-    void swopReturns404_apiReturns422() throws Exception {
-        // ISO code that swop.cx doesn't support → 404 upstream → 422 to caller.
-        // (We use "XTS" which is the ISO 4217 reserved code for testing —
-        // valid in Java's Currency table, so the upfront check doesn't fire.)
+    void staleCurrencyList_swopReturns404_apiReturns422() throws Exception {
+        // XTS is in the (stale) cached list, so validation passes, but swop.cx
+        // has no rate for it: the 404 safety net still turns that into a 422.
+        stubCurrencies("""
+                [
+                  { "code": "EUR", "name": "Euro", "active": true },
+                  { "code": "XTS", "name": "Testing code", "active": true }
+                ]
+                """);
         wireMock.stubFor(get(urlPathEqualTo("/rest/rates/EUR/XTS"))
                 .willReturn(aResponse().withStatus(404)));
 
@@ -254,6 +272,38 @@ class CurrencyConversionControllerIntegrationTest {
                                 """))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.status").value(422));
+    }
+
+    // ---------- supported currencies --------------------------------------
+
+    @Test
+    void unsupportedCurrency_returns422WithoutCallingRates() throws Exception {
+        mockMvc.perform(post("/api/convert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "amount": 1, "sourceCurrency": "EUR", "targetCurrency": "XYZ" }
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value(422))
+                .andExpect(jsonPath("$.errors[0]").value("Currency not supported: XYZ"));
+
+        wireMock.verify(exactly(0), getRequestedFor(urlPathMatching("/rest/rates/.*")));
+    }
+
+    @Test
+    void currencyListUnavailable_returns503WithoutCallingRates() throws Exception {
+        wireMock.stubFor(get(urlPathEqualTo("/rest/currencies"))
+                .willReturn(aResponse().withStatus(503)));
+
+        mockMvc.perform(post("/api/convert")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                { "amount": 1, "sourceCurrency": "USD", "targetCurrency": "EUR" }
+                                """))
+                .andExpect(status().isServiceUnavailable())
+                .andExpect(jsonPath("$.status").value(503));
+
+        wireMock.verify(exactly(0), getRequestedFor(urlPathMatching("/rest/rates/.*")));
     }
 
     // ---------- caching ---------------------------------------------------

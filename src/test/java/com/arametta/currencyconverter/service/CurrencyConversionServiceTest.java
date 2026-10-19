@@ -1,15 +1,20 @@
 package com.arametta.currencyconverter.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.arametta.currencyconverter.client.ExchangeRateUnavailableException;
 import com.arametta.currencyconverter.client.UnknownCurrencyException;
 import com.arametta.currencyconverter.model.ConversionRequest;
 import com.arametta.currencyconverter.model.ConversionResponse;
 import java.math.BigDecimal;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,8 +33,15 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class CurrencyConversionServiceTest {
 
     @Mock ExchangeRateProvider rateProvider;
+    @Mock SupportedCurrencies supportedCurrencies;
     @Mock ConversionMetrics metrics;
     @InjectMocks CurrencyConversionService service;
+
+    @BeforeEach
+    void everyCodeSupportedByDefault() {
+        // Lenient: tests that fail on the source code never check the target.
+        lenient().when(supportedCurrencies.isSupported(anyString())).thenReturn(true);
+    }
 
     // ---- cross-rate math --------------------------------------------------
 
@@ -131,15 +143,69 @@ class CurrencyConversionServiceTest {
         assertThat(response.targetCurrency()).isEqualTo("EUR");
     }
 
-    // ---- unknown currency -------------------------------------------------
+    // ---- supported currencies ---------------------------------------------
 
     @Test
-    void unknownCurrencyCode_throwsUnknownCurrencyException() {
-        // "ZZZ" passes the @Pattern regex but isn't a valid ISO 4217 code.
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.convert(
-                        new ConversionRequest(new BigDecimal("1"), "ZZZ", "EUR")))
-                .isInstanceOf(UnknownCurrencyException.class);
+    void unsupportedSourceCurrency_throwsBeforeAnyRateLookup() {
+        when(supportedCurrencies.isSupported("XYZ")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.convert(
+                        new ConversionRequest(new BigDecimal("1"), "XYZ", "EUR")))
+                .isInstanceOf(UnknownCurrencyException.class)
+                .hasMessage("Currency not supported: XYZ");
 
         verify(rateProvider, never()).getEurRate(any());
+    }
+
+    @Test
+    void unsupportedTargetCurrency_throwsBeforeAnyRateLookup() {
+        when(supportedCurrencies.isSupported("XYZ")).thenReturn(false);
+
+        assertThatThrownBy(() -> service.convert(
+                        new ConversionRequest(new BigDecimal("1"), "EUR", "XYZ")))
+                .isInstanceOf(UnknownCurrencyException.class)
+                .hasMessage("Currency not supported: XYZ");
+
+        verify(rateProvider, never()).getEurRate(any());
+    }
+
+    @Test
+    void lowercaseCodes_areCheckedInUppercase() {
+        when(rateProvider.getEurRate("USD")).thenReturn(new BigDecimal("1.08"));
+        when(rateProvider.getEurRate("EUR")).thenReturn(BigDecimal.ONE);
+
+        service.convert(new ConversionRequest(new BigDecimal("10"), "usd", "eur"));
+
+        verify(supportedCurrencies).isSupported("USD");
+        verify(supportedCurrencies).isSupported("EUR");
+    }
+
+    @Test
+    void currencyListUnavailable_propagatesWithoutRateLookup() {
+        // Don't skip validation when swop.cx is down: the caller gets 503.
+        when(supportedCurrencies.isSupported(anyString()))
+                .thenThrow(new ExchangeRateUnavailableException("Exchange rate provider is unreachable"));
+
+        assertThatThrownBy(() -> service.convert(
+                        new ConversionRequest(new BigDecimal("1"), "USD", "EUR")))
+                .isInstanceOf(ExchangeRateUnavailableException.class);
+
+        verify(rateProvider, never()).getEurRate(any());
+    }
+
+    @Test
+    void codeUnknownToJavaCurrency_usesTwoDigitsAndNeutralFormat() {
+        // BTC is not ISO 4217, so java.util.Currency has no data for it.
+        // Supported by the provider is enough; formatting falls back.
+        when(rateProvider.getEurRate("EUR")).thenReturn(BigDecimal.ONE);
+        when(rateProvider.getEurRate("BTC")).thenReturn(new BigDecimal("0.5"));
+
+        ConversionResponse response = service.convert(
+                new ConversionRequest(new BigDecimal("2469.005"), "EUR", "BTC"));
+
+        // 2469.005 * 0.5 = 1234.5025 → 2 dp = 1234.50
+        assertThat(response.convertedAmount()).isEqualByComparingTo("1234.50");
+        assertThat(response.convertedAmount().scale()).isEqualTo(2);
+        assertThat(response.formattedAmount()).isEqualTo("BTC 1,234.50");
     }
 }

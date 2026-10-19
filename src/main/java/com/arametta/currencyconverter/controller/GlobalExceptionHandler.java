@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  *
  * Status mapping:
  *   400 — request body failed Jakarta validation or wasn't valid JSON
- *   422 — currency code was syntactically valid but not a known ISO 4217 code
+ *   422 — currency code was syntactically valid but not supported by swop.cx
  *   503 — upstream rate provider unreachable / errored
  *   500 — anything else (catch-all so we never leak a stacktrace)
  */

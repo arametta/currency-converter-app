@@ -67,7 +67,7 @@ Only active currencies, sorted alphabetically by code.
 |------|------------------------------------------------------------|
 | 200  | Successful conversion                                      |
 | 400  | Validation failure (negative amount, bad currency length…) |
-| 422  | Currency code is syntactically valid but unknown to swop.cx |
+| 422  | Currency code not supported by swop.cx                     |
 | 503  | swop.cx is unreachable or returned an error                |
 | 500  | Unhandled server error                                     |
 
@@ -163,7 +163,7 @@ curl -i -X POST http://localhost:8080/api/convert \
   -H 'Content-Type: application/json' \
   -d '{ "amount": -5, "sourceCurrency": "USD", "targetCurrency": "EUR" }'
 
-# Unknown ISO code → 422
+# Currency not supported by swop.cx → 422
 curl -i -X POST http://localhost:8080/api/convert \
   -H 'Content-Type: application/json' \
   -d '{ "amount": 1, "sourceCurrency": "ZZZ", "targetCurrency": "EUR" }'
@@ -208,9 +208,11 @@ underscores in InfluxDB (`conversion_requests_total`).
 ```
 
 - `CurrencyConversionServiceTest` — cross-rate math, rounding, same-currency
-  short-circuit, normalisation and unknown codes
+  short-circuit, normalisation, supported-currency checks and fallback
+  formatting
 - `ConversionRequestValidationTest` — Jakarta constraints on the request DTO
 - `CurrencyServiceTest` — currency list mapping, sorting and filtering
+- `SupportedCurrenciesTest` — lookups against the active currency list
 - `SwopClientTest` — requests, headers and failure handling for both
   swop.cx endpoints, against WireMock
 - `CurrencyConversionControllerIntegrationTest` — full Spring Boot context
@@ -250,9 +252,10 @@ src/main/java/com/arametta/currencyconverter/
     CurrencyConversionController.java     — POST /api/convert, GET /api/currencies
     GlobalExceptionHandler.java           — @RestControllerAdvice
   service/
-    CurrencyConversionService.java        — normalise, short-circuit, cross-rate, format
+    CurrencyConversionService.java        — normalise, validate, short-circuit, cross-rate, format
     ExchangeRateProvider.java             — @Cacheable wrapper around SwopClient
     CurrencyService.java                  — @Cacheable wrapper for currency catalogue
+    SupportedCurrencies.java              — is a code in swop.cx's active list?
     ConversionMetrics.java                — Micrometer counters / timer / gauge
   client/
     SwopClient.java                       — RestClient calls to swop.cx
@@ -276,6 +279,7 @@ src/test/java/com/arametta/currencyconverter/
   model/ConversionRequestValidationTest.java
   service/CurrencyConversionServiceTest.java
   service/CurrencyServiceTest.java
+  service/SupportedCurrenciesTest.java
   client/SwopClientTest.java
   controller/CurrencyConversionControllerIntegrationTest.java
 
@@ -305,16 +309,26 @@ Spring's `@Cacheable` works through AOP proxies and doesn't intercept
 calls within the same bean. Splitting it out ensures the cache is
 actually used.
 
-**Unknown currency codes return 422, not 503.** If swop.cx returns 404
-for an unknown code, that's a client error (bad input), not an upstream
-failure. The distinction matters for the caller to know whether to retry
-or fix their request.
+**Currency codes are validated against swop.cx's own list.** Before any
+rate lookup, both codes are checked against the active currencies from
+swop.cx's `/rest/currencies`, reusing the 24-hour cache behind
+`GET /api/currencies`. An unsupported code returns 422 without spending a
+rate call. If the list itself can't be loaded the request fails with 503
+instead of skipping the check. A 404 from swop.cx on a rate lookup still
+maps to 422, in case the cached list is out of date.
+
+**Unsupported currencies return 422, not 503.** The input is the problem,
+not the upstream. The distinction tells the caller whether to fix the
+request or retry it.
 
 **`BigDecimal` everywhere, no `double`.** Floating point can't represent
 0.10 exactly. For money that's not acceptable.
 
 **`Currency.getDefaultFractionDigits()` for formatting.** JPY has 0
 decimal places, some currencies have 3. Hardcoding 2 gives wrong results.
+`java.util.Currency` only shapes the output, it doesn't decide validity:
+a code swop.cx supports but Java doesn't know falls back to 2 decimals and
+a neutral format such as `BTC 1,234.50`.
 
 **Formatted amount is rendered with `Intl.NumberFormat` on the frontend.**
 The backend still returns a pre-formatted `formattedAmount` string (using 

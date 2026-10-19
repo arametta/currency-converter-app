@@ -2,10 +2,9 @@ package com.arametta.currencyconverter.client;
 
 /**
  * Thrown when a currency code is not usable:
- *   - the upfront check `Currency.getInstance(code)` in
- *     CurrencyConversionService rejects it as not a known ISO 4217 code, OR
- *   - swop.cx responds 404, meaning the code is valid ISO 4217 but swop.cx
- *     does not provide a rate for it.
+ *   - CurrencyConversionService finds it missing from swop.cx's active
+ *     currency list, OR
+ *   - swop.cx responds 404 to a rate lookup (safety net for a stale list).
  *
  * Both cases collapse to HTTP 422 (Unprocessable Entity) in
  * GlobalExceptionHandler: the request was syntactically valid (passed

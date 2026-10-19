@@ -11,12 +11,14 @@ import java.util.Currency;
 import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 /**
- * Handles a single conversion request. Normalises currency codes,
- * short-circuits same-currency pairs, and derives the source→target
- * rate via EUR: effectiveRate = eurToTarget / eurToSource.
+ * Handles a single conversion request. Normalises currency codes, checks
+ * them against the currencies swop.cx supports, short-circuits same-currency
+ * pairs, and derives the source→target rate via EUR:
+ * effectiveRate = eurToTarget / eurToSource.
  * All caching happens in ExchangeRateProvider.
  */
 @Service
@@ -30,13 +32,21 @@ public class CurrencyConversionService {
     // distorted by truncation in the division. 10 dp is comfortable.
     private static final int CROSS_RATE_SCALE = 10;
 
+    // Used when java.util.Currency has no data for a code swop.cx supports.
+    private static final int DEFAULT_FRACTION_DIGITS = 2;
+
     // Calling a separate bean (rather than a method on `this`) is required for
     // @Cacheable to fire — see ExchangeRateProvider for the explanation.
     private final ExchangeRateProvider rateProvider;
+    private final SupportedCurrencies supportedCurrencies;
     private final ConversionMetrics metrics;
 
-    public CurrencyConversionService(ExchangeRateProvider rateProvider, ConversionMetrics metrics) {
+    public CurrencyConversionService(
+            ExchangeRateProvider rateProvider,
+            SupportedCurrencies supportedCurrencies,
+            ConversionMetrics metrics) {
         this.rateProvider = rateProvider;
+        this.supportedCurrencies = supportedCurrencies;
         this.metrics = metrics;
     }
 
@@ -48,20 +58,21 @@ public class CurrencyConversionService {
 
         metrics.recordConversionRequest(source, target);
 
-        // Validate both codes before touching swop.cx — 422 is cheaper than an API call.
-        resolveCurrency(source);
-        Currency targetIso = resolveCurrency(target);
+        // Checked before any rate lookup, so an unsupported code costs no rate call.
+        requireSupported(source);
+        requireSupported(target);
+        Currency targetIso = isoCurrency(target);
 
         BigDecimal amount = request.amount();
 
-        // Same-currency short-circuit. Rate is implicitly 1; no upstream call.
+        // Same-currency short-circuit. Rate is implicitly 1; no rate lookup.
         if (source.equals(target)) {
             log.info("Same-currency conversion {} {} — short-circuit", amount, source);
             BigDecimal converted = scale(amount, targetIso);
             return new ConversionResponse(
                     amount, source, target,
                     converted,
-                    format(converted, targetIso),
+                    format(converted, target, targetIso),
                     BigDecimal.ONE);
         }
 
@@ -78,7 +89,7 @@ public class CurrencyConversionService {
                 eurToSource, CROSS_RATE_SCALE, RoundingMode.HALF_UP);
 
         BigDecimal converted = scale(amount.multiply(effectiveRate), targetIso);
-        String formatted = format(converted, targetIso);
+        String formatted = format(converted, target, targetIso);
 
         log.info("Converted {} {} → {} {} (rate {})",
                 amount, source, converted, target, effectiveRate);
@@ -87,11 +98,22 @@ public class CurrencyConversionService {
                 amount, source, target, converted, formatted, effectiveRate);
     }
 
-    private Currency resolveCurrency(String code) {
+    private void requireSupported(String code) {
+        if (!supportedCurrencies.isSupported(code)) {
+            throw new UnknownCurrencyException("Currency not supported: " + code);
+        }
+    }
+
+    /**
+     * java.util.Currency is only used for fraction digits and formatting.
+     * Returns null for codes it doesn't know: swop.cx decides what is valid.
+     */
+    @Nullable
+    private static Currency isoCurrency(String code) {
         try {
             return Currency.getInstance(code);
         } catch (IllegalArgumentException e) {
-            throw new UnknownCurrencyException("Unknown currency code: " + code, e);
+            return null;
         }
     }
 
@@ -99,10 +121,10 @@ public class CurrencyConversionService {
      * Rounds to the target currency's default fraction digits. Avoids hard-
      * coding "2 decimals" — JPY has 0, KWD has 3, BHD has 3, etc.
      */
-    private BigDecimal scale(BigDecimal value, Currency currency) {
-        int digits = currency.getDefaultFractionDigits();
+    private BigDecimal scale(BigDecimal value, @Nullable Currency currency) {
+        int digits = currency == null ? -1 : currency.getDefaultFractionDigits();
         if (digits < 0) {
-            digits = 2; // some pseudo-currencies report -1; safe default
+            digits = DEFAULT_FRACTION_DIGITS; // unknown code or pseudo-currency (-1)
         }
         return value.setScale(digits, RoundingMode.HALF_UP);
     }
@@ -114,7 +136,14 @@ public class CurrencyConversionService {
      * Premature optimisation (ThreadLocal cache, etc.) is not worth the risk
      * at this traffic level.
      */
-    private String format(BigDecimal value, Currency currency) {
+    private String format(BigDecimal value, String code, @Nullable Currency currency) {
+        if (currency == null) {
+            // Neutral fallback, e.g. "BTC 1,234.50".
+            NumberFormat number = NumberFormat.getNumberInstance(Locale.ROOT);
+            number.setMinimumFractionDigits(value.scale());
+            number.setMaximumFractionDigits(value.scale());
+            return code + " " + number.format(value);
+        }
         Locale locale = resolveLocale(currency);
         NumberFormat formatter = NumberFormat.getCurrencyInstance(locale);
         // The matched locale's default currency may differ (e.g. for a locale
