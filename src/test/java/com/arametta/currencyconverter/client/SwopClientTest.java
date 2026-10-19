@@ -1,52 +1,66 @@
 package com.arametta.currencyconverter.client;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
+import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.exactly;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
+import com.arametta.currencyconverter.config.SwopClientConfig;
 import com.arametta.currencyconverter.config.SwopProperties;
 import com.arametta.currencyconverter.model.SwopCurrencyResponse;
-import com.arametta.currencyconverter.model.SwopRateResponse;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
+import com.github.tomakehurst.wiremock.http.Fault;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClient;
 
 /**
  * Unit tests for the swop.cx HTTP adapter.
  *
- * RestTemplate is mocked directly (rather than via MockRestServiceServer) so
- * we can simulate every failure mode — including ResourceAccessException for
- * timeouts — with one consistent approach.
+ * The client is built through SwopClientConfig and talks real HTTP to
+ * WireMock, so base URL, headers and timeouts are the production ones,
+ * not a hand-built copy.
  */
-@ExtendWith(MockitoExtension.class)
 class SwopClientTest {
 
-    @Mock RestTemplate restTemplate;
+    // Short read timeout so the timeout scenario stays fast.
+    private static final Duration READ_TIMEOUT = Duration.ofMillis(300);
+
+    private static WireMockServer wireMock;
 
     private SwopClient client;
 
+    @BeforeAll
+    static void startWireMock() {
+        wireMock = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+        wireMock.start();
+    }
+
+    @AfterAll
+    static void stopWireMock() {
+        wireMock.stop();
+    }
+
     @BeforeEach
     void setUp() {
-        client = new SwopClient(restTemplate, new SwopProperties(
-                "https://swop.cx", "test-key", Duration.ofSeconds(5), Duration.ofSeconds(10)));
+        wireMock.resetAll();
+        SwopProperties properties = new SwopProperties(
+                wireMock.baseUrl(), "test-key", Duration.ofSeconds(1), READ_TIMEOUT);
+        RestClient restClient = new SwopClientConfig().swopRestClient(RestClient.builder(), properties);
+        client = new SwopClient(restClient);
     }
 
     // ---- EUR short-circuit ------------------------------------------------
@@ -56,26 +70,23 @@ class SwopClientTest {
         BigDecimal rate = client.getEurRate("EUR");
 
         assertThat(rate).isEqualByComparingTo(BigDecimal.ONE);
-        verify(restTemplate, never()).exchange(any(String.class), any(HttpMethod.class),
-                any(HttpEntity.class), eq(SwopRateResponse.class));
+        wireMock.verify(exactly(0), anyRequestedFor(anyUrl()));
     }
 
     // ---- success ----------------------------------------------------------
 
     @Test
     void successfulResponse_isDeserialisedAndRateReturned() {
-        SwopRateResponse body = new SwopRateResponse(
-                "EUR", "USD", new BigDecimal("1.08"), "2026-05-23");
-        when(restTemplate.exchange(
-                contains("/rest/rates/EUR/USD"),
-                eq(HttpMethod.GET),
-                any(HttpEntity.class),
-                eq(SwopRateResponse.class)))
-                .thenReturn(ResponseEntity.ok(body));
+        stubJson("/rest/rates/EUR/USD", """
+                { "base_currency": "EUR", "quote_currency": "USD", "quote": 1.08, "date": "2026-05-23" }
+                """);
 
         BigDecimal rate = client.getEurRate("USD");
 
         assertThat(rate).isEqualByComparingTo("1.08");
+        wireMock.verify(exactly(1), getRequestedFor(urlPathEqualTo("/rest/rates/EUR/USD"))
+                .withHeader("Authorization", equalTo("ApiKey test-key"))
+                .withHeader("Accept", equalTo("application/json")));
     }
 
     // ---- failure translation ---------------------------------------------
@@ -84,22 +95,17 @@ class SwopClientTest {
     void notFound_throwsUnknownCurrencyException() {
         // 404 specifically means "swop.cx doesn't support this currency".
         // Caller sees 422, not 503 — the upstream is fine, the input isn't.
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class),
-                eq(SwopRateResponse.class)))
-                .thenThrow(HttpClientErrorException.create(
-                        HttpStatus.NOT_FOUND, "Not Found", null, null, null));
+        stubStatus("/rest/rates/EUR/XTS", 404);
 
         assertThatThrownBy(() -> client.getEurRate("XTS"))
-                .isInstanceOf(UnknownCurrencyException.class);
+                .isInstanceOf(UnknownCurrencyException.class)
+                .hasMessageContaining("XTS");
     }
 
     @Test
     void otherClientError_throwsExchangeRateUnavailable() {
         // 401 (bad API key), 429 (rate-limited), etc. all funnel here.
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class),
-                eq(SwopRateResponse.class)))
-                .thenThrow(HttpClientErrorException.create(
-                        HttpStatus.UNAUTHORIZED, "Unauthorized", null, null, null));
+        stubStatus("/rest/rates/EUR/USD", 401);
 
         assertThatThrownBy(() -> client.getEurRate("USD"))
                 .isInstanceOf(ExchangeRateUnavailableException.class);
@@ -107,32 +113,28 @@ class SwopClientTest {
 
     @Test
     void serverError_throwsExchangeRateUnavailable() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class),
-                eq(SwopRateResponse.class)))
-                .thenThrow(HttpServerErrorException.create(
-                        HttpStatus.INTERNAL_SERVER_ERROR, "Boom", null, null, null));
+        stubStatus("/rest/rates/EUR/USD", 500);
 
         assertThatThrownBy(() -> client.getEurRate("USD"))
                 .isInstanceOf(ExchangeRateUnavailableException.class);
     }
 
     @Test
-    void networkTimeout_throwsExchangeRateUnavailable() {
-        // RestTemplate wraps SocketTimeoutException as ResourceAccessException.
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class),
-                eq(SwopRateResponse.class)))
-                .thenThrow(new ResourceAccessException("Read timed out"));
+    void readTimeout_throwsExchangeRateUnavailable() {
+        wireMock.stubFor(get(urlPathEqualTo("/rest/rates/EUR/USD"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withFixedDelay((int) READ_TIMEOUT.toMillis() * 3)));
 
         assertThatThrownBy(() -> client.getEurRate("USD"))
-                .isInstanceOf(ExchangeRateUnavailableException.class);
+                .isInstanceOf(ExchangeRateUnavailableException.class)
+                .hasCauseInstanceOf(ResourceAccessException.class);
     }
 
     @Test
     void emptyResponseBody_throwsExchangeRateUnavailable() {
         // Defensive: never assume the body is non-null.
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class),
-                eq(SwopRateResponse.class)))
-                .thenReturn(ResponseEntity.ok(null));
+        stubJson("/rest/rates/EUR/USD", "");
 
         assertThatThrownBy(() -> client.getEurRate("USD"))
                 .isInstanceOf(ExchangeRateUnavailableException.class);
@@ -144,53 +146,68 @@ class SwopClientTest {
     void getCurrencies_returnsDeserialisedListIncludingInactiveEntries() {
         // The client doesn't filter — that's CurrencyService's job. Verify
         // both active and inactive entries pass through unchanged.
-        SwopCurrencyResponse[] body = new SwopCurrencyResponse[]{
-                new SwopCurrencyResponse("USD", "United States dollar", true),
-                new SwopCurrencyResponse("XAF", "CFA franc BEAC", false),
-                new SwopCurrencyResponse("EUR", "Euro", true)
-        };
-        when(restTemplate.exchange(
-                contains("/rest/currencies"),
-                eq(HttpMethod.GET),
-                any(HttpEntity.class),
-                eq(SwopCurrencyResponse[].class)))
-                .thenReturn(ResponseEntity.ok(body));
+        stubJson("/rest/currencies", """
+                [
+                  { "code": "USD", "name": "United States dollar", "active": true },
+                  { "code": "XAF", "name": "CFA franc BEAC", "active": false },
+                  { "code": "EUR", "name": "Euro", "active": true }
+                ]
+                """);
 
         List<SwopCurrencyResponse> result = client.getCurrencies();
 
-        assertThat(result).hasSize(3);
         assertThat(result).extracting(SwopCurrencyResponse::code)
                 .containsExactly("USD", "XAF", "EUR");
+        wireMock.verify(exactly(1), getRequestedFor(urlPathEqualTo("/rest/currencies"))
+                .withHeader("Authorization", equalTo("ApiKey test-key")));
+    }
+
+    @Test
+    void getCurrencies_notFound_throwsExchangeRateUnavailable() {
+        // Unlike a rate lookup, a 404 here is an upstream problem, not bad input.
+        stubStatus("/rest/currencies", 404);
+
+        assertThatThrownBy(() -> client.getCurrencies())
+                .isInstanceOf(ExchangeRateUnavailableException.class);
     }
 
     @Test
     void getCurrencies_serverError_throwsExchangeRateUnavailable() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class),
-                eq(SwopCurrencyResponse[].class)))
-                .thenThrow(HttpServerErrorException.create(
-                        HttpStatus.INTERNAL_SERVER_ERROR, "Boom", null, null, null));
+        stubStatus("/rest/currencies", 500);
 
         assertThatThrownBy(() -> client.getCurrencies())
                 .isInstanceOf(ExchangeRateUnavailableException.class);
     }
 
     @Test
-    void getCurrencies_networkTimeout_throwsExchangeRateUnavailable() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class),
-                eq(SwopCurrencyResponse[].class)))
-                .thenThrow(new ResourceAccessException("Connection refused"));
+    void getCurrencies_networkFailure_throwsExchangeRateUnavailable() {
+        wireMock.stubFor(get(urlPathEqualTo("/rest/currencies"))
+                .willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)));
 
         assertThatThrownBy(() -> client.getCurrencies())
-                .isInstanceOf(ExchangeRateUnavailableException.class);
+                .isInstanceOf(ExchangeRateUnavailableException.class)
+                .hasCauseInstanceOf(ResourceAccessException.class);
     }
 
     @Test
     void getCurrencies_emptyBody_throwsExchangeRateUnavailable() {
-        when(restTemplate.exchange(any(String.class), eq(HttpMethod.GET), any(HttpEntity.class),
-                eq(SwopCurrencyResponse[].class)))
-                .thenReturn(ResponseEntity.ok(null));
+        stubJson("/rest/currencies", "");
 
         assertThatThrownBy(() -> client.getCurrencies())
                 .isInstanceOf(ExchangeRateUnavailableException.class);
+    }
+
+    // ---- helpers ---------------------------------------------------------
+
+    private void stubJson(String path, String body) {
+        wireMock.stubFor(get(urlPathEqualTo(path))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(body)));
+    }
+
+    private void stubStatus(String path, int status) {
+        wireMock.stubFor(get(urlPathEqualTo(path)).willReturn(aResponse().withStatus(status)));
     }
 }

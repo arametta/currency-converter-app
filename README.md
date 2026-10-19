@@ -12,7 +12,7 @@ Built as a personal project.
 | Language    | Java 21                               |
 | Framework   | Spring Boot 3.4.1                     |
 | Build       | Maven (wrapper bundled — `./mvnw`)    |
-| HTTP client | `RestTemplate`                        |
+| HTTP client | `RestClient` (JDK `HttpClient`)       |
 | Cache       | Caffeine (rates 5min, currencies 24h) |
 | Validation  | Jakarta Bean Validation               |
 | Tests       | JUnit 5 + Mockito + WireMock          |
@@ -211,7 +211,8 @@ underscores in InfluxDB (`conversion_requests_total`).
   short-circuit, normalisation and unknown codes
 - `ConversionRequestValidationTest` — Jakarta constraints on the request DTO
 - `CurrencyServiceTest` — currency list mapping, sorting and filtering
-- `SwopClientTest` — HTTP failure handling for both swop.cx endpoints
+- `SwopClientTest` — requests, headers and failure handling for both
+  swop.cx endpoints, against WireMock
 - `CurrencyConversionControllerIntegrationTest` — full Spring Boot context
   with WireMock standing in for swop.cx: happy paths, error mapping,
   caching and metrics
@@ -254,7 +255,7 @@ src/main/java/com/arametta/currencyconverter/
     CurrencyService.java                  — @Cacheable wrapper for currency catalogue
     ConversionMetrics.java                — Micrometer counters / timer / gauge
   client/
-    SwopClient.java                       — RestTemplate calls to swop.cx
+    SwopClient.java                       — RestClient calls to swop.cx
     UnknownCurrencyException.java         — 422
     ExchangeRateUnavailableException.java — 503
   model/
@@ -266,7 +267,7 @@ src/main/java/com/arametta/currencyconverter/
     ErrorResponse.java
   config/
     CacheConfig.java                      — two caches: rates 5min, currencies 24h
-    HttpClientConfig.java                 — RestTemplate with timeouts
+    SwopClientConfig.java                 — RestClient: base URL, auth header, timeouts
     SwopProperties.java                   — validated swop.* settings
     WebMvcConfig.java                     — CORS for localhost:5173
 
