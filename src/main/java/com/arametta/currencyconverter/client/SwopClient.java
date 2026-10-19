@@ -1,5 +1,6 @@
 package com.arametta.currencyconverter.client;
 
+import com.arametta.currencyconverter.config.SwopProperties;
 import com.arametta.currencyconverter.model.SwopCurrencyResponse;
 import com.arametta.currencyconverter.model.SwopRateResponse;
 import java.math.BigDecimal;
@@ -7,7 +8,6 @@ import java.util.Arrays;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -36,13 +36,10 @@ public class SwopClient {
     private final String baseUrl;
     private final String apiKey;
 
-    public SwopClient(
-            RestTemplate restTemplate,
-            @Value("${swop.base-url}") String baseUrl,
-            @Value("${swop.api-key}") String apiKey) {
+    public SwopClient(RestTemplate restTemplate, SwopProperties properties) {
         this.restTemplate = restTemplate;
-        this.baseUrl = baseUrl;
-        this.apiKey = apiKey;
+        this.baseUrl = properties.baseUrl();
+        this.apiKey = properties.apiKey();
     }
 
     /**

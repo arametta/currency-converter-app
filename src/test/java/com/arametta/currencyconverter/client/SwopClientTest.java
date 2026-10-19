@@ -9,9 +9,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.arametta.currencyconverter.config.SwopProperties;
 import com.arametta.currencyconverter.model.SwopCurrencyResponse;
 import com.arametta.currencyconverter.model.SwopRateResponse;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,7 +45,8 @@ class SwopClientTest {
 
     @BeforeEach
     void setUp() {
-        client = new SwopClient(restTemplate, "https://swop.cx", "test-key");
+        client = new SwopClient(restTemplate, new SwopProperties(
+                "https://swop.cx", "test-key", Duration.ofSeconds(5), Duration.ofSeconds(10)));
     }
 
     // ---- EUR short-circuit ------------------------------------------------

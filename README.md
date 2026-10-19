@@ -222,8 +222,10 @@ Tests are hermetic — no network calls, no real API key needed.
 
 | Property                                   | Default                 | Notes                    |
 |--------------------------------------------|-------------------------|--------------------------|
-| `swop.api-key`                             | `${SWOP_API_KEY}`       | Required at runtime      |
+| `swop.api-key`                             | `${SWOP_API_KEY}`       | Required, validated      |
 | `swop.base-url`                            | `https://swop.cx`       |                          |
+| `swop.connect-timeout`                     | `5s`                    | swop.cx connect timeout  |
+| `swop.read-timeout`                        | `10s`                   | swop.cx read timeout     |
 | `spring.cache.type`                        | `caffeine`              | TTL set in `CacheConfig` |
 | `management.influx.metrics.export.uri`     | `http://localhost:8086` | Overridden in compose    |
 | `management.influx.metrics.export.enabled` | `false`                 | Compose sets to `true`   |
@@ -265,9 +267,11 @@ src/main/java/com/arametta/currencyconverter/
   config/
     CacheConfig.java                      — two caches: rates 5min, currencies 24h
     HttpClientConfig.java                 — RestTemplate with timeouts
+    SwopProperties.java                   — validated swop.* settings
     WebMvcConfig.java                     — CORS for localhost:5173
 
 src/test/java/com/arametta/currencyconverter/
+  config/SwopPropertiesTest.java
   model/ConversionRequestValidationTest.java
   service/CurrencyConversionServiceTest.java
   service/CurrencyServiceTest.java
