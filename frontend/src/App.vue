@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { onMounted } from 'vue'
+import ConversionForm from './components/ConversionForm.vue'
+import ConversionResult from './components/ConversionResult.vue'
 import { useConversion } from './composables/useConversion'
 import { useCurrencies } from './composables/useCurrencies'
-import { formatCurrency } from './utils/format'
 
 const {
   currencies,
@@ -31,70 +32,25 @@ onMounted(async () => {
     target.value = 'USD'
   }
 })
-
-const formattedAmount = computed(() =>
-  result.value
-    ? formatCurrency(result.value.convertedAmount, result.value.targetCurrency)
-    : ''
-)
 </script>
 
 <template>
   <main>
     <h1>Currency Converter</h1>
 
-    <form @submit.prevent="convert">
-      <div class="field">
-        <label for="source">From</label>
-        <select id="source" v-model="source">
-          <option v-if="loadingCurrencies" value="">Loading...</option>
-          <option v-else-if="currenciesError" value="">Could not load currencies</option>
-          <option v-for="c in currencies" :key="c.code" :value="c.code">
-            {{ c.code }} — {{ c.name }}
-          </option>
-        </select>
-      </div>
+    <ConversionForm
+      v-model:source="source"
+      v-model:target="target"
+      v-model:amount="amount"
+      :currencies="currencies"
+      :loading-currencies="loadingCurrencies"
+      :currencies-error="currenciesError"
+      :converting="converting"
+      @submit="convert"
+      @swap="swap"
+    />
 
-      <button
-        type="button"
-        class="swap"
-        @click="swap"
-        :disabled="converting || loadingCurrencies"
-        aria-label="Swap source and target currencies"
-        title="Swap currencies"
-      >
-        ⇅
-      </button>
-
-      <div class="field">
-        <label for="target">To</label>
-        <select id="target" v-model="target">
-          <option v-if="loadingCurrencies" value="">Loading...</option>
-          <option v-else-if="currenciesError" value="">Could not load currencies</option>
-          <option v-for="c in currencies" :key="c.code" :value="c.code">
-            {{ c.code }} — {{ c.name }}
-          </option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="amount">Amount</label>
-        <input id="amount" type="number" v-model.number="amount" min="0" max="999999999999.99" step="0.001" />
-      </div>
-
-      <button type="submit" :disabled="converting">
-        {{ converting ? 'Converting...' : 'Convert' }}
-      </button>
-    </form>
-
-    <div v-if="result" class="result">
-      <p class="amount">{{ formattedAmount }}</p>
-      <p class="rate">
-        1 {{ result.sourceCurrency }} = {{ result.exchangeRate }} {{ result.targetCurrency }}
-      </p>
-    </div>
-
-    <div v-if="convertError" class="error">{{ convertError }}</div>
+    <ConversionResult :result="result" :error="convertError" />
   </main>
 </template>
 
@@ -110,95 +66,5 @@ main {
 h1 {
   font-size: 1.5rem;
   margin-bottom: 1.5rem;
-}
-
-form {
-  display: grid;
-  gap: 1rem;
-}
-
-.field {
-  display: grid;
-  gap: 0.25rem;
-}
-
-label {
-  font-size: 0.875rem;
-  color: #555;
-}
-
-select,
-input {
-  padding: 0.5rem;
-  font-size: 1rem;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: white;
-}
-
-button {
-  padding: 0.6rem;
-  font-size: 1rem;
-  background: #1f6feb;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-button:disabled {
-  background: #aaa;
-  cursor: not-allowed;
-}
-
-.swap {
-  justify-self: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0;
-  font-size: 1.1rem;
-  background: white;
-  color: #1f6feb;
-  border: 1px solid #ccc;
-  border-radius: 50%;
-  margin: -0.25rem 0;
-}
-
-.swap:hover:not(:disabled) {
-  background: #f5f5f5;
-}
-
-.swap:disabled {
-  background: white;
-  color: #aaa;
-  border-color: #ddd;
-}
-
-.result {
-  margin-top: 1.5rem;
-  padding: 1rem;
-  background: #f5f5f5;
-  border-radius: 4px;
-}
-
-.amount {
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.rate {
-  margin: 0.5rem 0 0 0;
-  color: #666;
-  font-size: 0.875rem;
-}
-
-.error {
-  margin-top: 1rem;
-  padding: 0.75rem;
-  background: #ffebee;
-  color: #c62828;
-  border-radius: 4px;
-  font-size: 0.875rem;
 }
 </style>

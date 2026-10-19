@@ -125,7 +125,8 @@ npm run dev
 The dev server runs on `http://localhost:5173`. The backend must be running
 first — the frontend calls it directly and CORS is configured for `:5173`.
 
-Frontend tests run with Vitest:
+Frontend tests run with Vitest (component tests use jsdom and
+`@vue/test-utils`):
 
 ```bash
 cd frontend
@@ -291,11 +292,14 @@ src/test/java/com/arametta/currencyconverter/
   controller/CurrencyConversionControllerIntegrationTest.java
 
 frontend/
-  src/App.vue
+  src/App.vue                             — composes the pieces, nothing else
   src/main.js
   src/api/currencyApi.js                  — fetch calls + error envelope handling
   src/composables/useCurrencies.js        — currency list + loading / error state
   src/composables/useConversion.js        — form values, conversion state, swap()
+  src/components/CurrencySelect.vue       — labelled currency dropdown (used twice)
+  src/components/ConversionForm.vue       — dropdowns, swap button, amount, submit
+  src/components/ConversionResult.vue     — formatted result or error message
   src/utils/format.js                     — Intl.NumberFormat helper
   index.html
   vite.config.js
