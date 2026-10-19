@@ -76,6 +76,7 @@ Only active currencies, sorted alphabetically by code.
 - Java 21
 - Maven (or use the bundled `./mvnw`)
 - Docker (optional, needed for monitoring stack)
+- Node.js 22.12+ (for the frontend)
 - A swop.cx API key set as `SWOP_API_KEY` env var
 
 ## Building and running
