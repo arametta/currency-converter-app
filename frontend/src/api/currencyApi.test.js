@@ -16,6 +16,7 @@ function mockFetch(implementation) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 describe('fetchCurrencies', () => {
@@ -76,6 +77,42 @@ describe('convert', () => {
     })
 
     await expect(convert({ amount: 1, sourceCurrency: 'EUR', targetCurrency: 'USD' }))
-      .rejects.toThrow('Network error — is the API running on :8080?')
+      .rejects.toThrow('Network error — is the API running at http://localhost:8080?')
+  })
+})
+
+describe('API base URL', () => {
+  // API_BASE is read when the module loads, so re-import after stubbing.
+  async function importWithEnv(value) {
+    vi.stubEnv('VITE_API_BASE', value)
+    vi.resetModules()
+    return import('./currencyApi')
+  }
+
+  it('uses VITE_API_BASE when set', async () => {
+    const { fetchCurrencies } = await importWithEnv('https://api.example.com')
+    const fetchMock = mockFetch(async () => jsonResponse(200, []))
+
+    await fetchCurrencies()
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/currencies', undefined)
+  })
+
+  it('ignores a trailing slash in VITE_API_BASE', async () => {
+    const { fetchCurrencies } = await importWithEnv('https://api.example.com/')
+    const fetchMock = mockFetch(async () => jsonResponse(200, []))
+
+    await fetchCurrencies()
+
+    expect(fetchMock).toHaveBeenCalledWith('https://api.example.com/api/currencies', undefined)
+  })
+
+  it('falls back to localhost:8080 when VITE_API_BASE is empty', async () => {
+    const { fetchCurrencies } = await importWithEnv('')
+    const fetchMock = mockFetch(async () => jsonResponse(200, []))
+
+    await fetchCurrencies()
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8080/api/currencies', undefined)
   })
 })

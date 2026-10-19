@@ -125,6 +125,12 @@ npm run dev
 The dev server runs on `http://localhost:5173`. The backend must be running
 first — the frontend calls it directly and CORS is configured for `:5173`.
 
+The backend URL comes from `VITE_API_BASE` (default `http://localhost:8080`).
+To point the UI at another backend, copy `frontend/.env.example` to
+`frontend/.env.local` and change the value. Vite inlines it at build time, so
+set it before `npm run build`. A different frontend origin also has to be
+allowed in `WebMvcConfig`.
+
 Frontend tests run with Vitest (component tests use jsdom and
 `@vue/test-utils`):
 
@@ -301,6 +307,7 @@ frontend/
   src/components/ConversionForm.vue       — dropdowns, swap button, amount, submit
   src/components/ConversionResult.vue     — formatted result or error message
   src/utils/format.js                     — Intl.NumberFormat helper
+  .env.example                            — VITE_API_BASE template
   index.html
   vite.config.js
   package.json
