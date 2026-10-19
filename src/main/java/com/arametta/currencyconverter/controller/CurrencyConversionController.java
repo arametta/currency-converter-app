@@ -1,0 +1,41 @@
+package com.arametta.currencyconverter.controller;
+
+import com.arametta.currencyconverter.model.ConversionRequest;
+import com.arametta.currencyconverter.model.ConversionResponse;
+import com.arametta.currencyconverter.service.CurrencyConversionService;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * Thin HTTP boundary. No business logic — purely:
+ *   1) deserialise + @Valid the request body (where applicable)
+ *   2) delegate to a service
+ *   3) wrap the result in a ResponseEntity
+ *
+ * Validation failures don't reach this code: Spring throws
+ * MethodArgumentNotValidException before the method body runs, and that's
+ * picked up by GlobalExceptionHandler.
+ */
+@RestController
+@RequestMapping("/api")
+public class CurrencyConversionController {
+
+    private final CurrencyConversionService conversionService;
+
+    public CurrencyConversionController(CurrencyConversionService conversionService) {
+        this.conversionService = conversionService;
+    }
+
+    /**
+     * Converts a monetary amount from one currency to another.
+     */
+    @PostMapping("/convert")
+    public ResponseEntity<ConversionResponse> convert(@Valid @RequestBody ConversionRequest request) {
+        return ResponseEntity.ok(conversionService.convert(request));
+    }
+
+}
