@@ -33,9 +33,11 @@ public class CurrencyConversionService {
     // Calling a separate bean (rather than a method on `this`) is required for
     // @Cacheable to fire — see ExchangeRateProvider for the explanation.
     private final ExchangeRateProvider rateProvider;
+    private final ConversionMetrics metrics;
 
-    public CurrencyConversionService(ExchangeRateProvider rateProvider) {
+    public CurrencyConversionService(ExchangeRateProvider rateProvider, ConversionMetrics metrics) {
         this.rateProvider = rateProvider;
+        this.metrics = metrics;
     }
 
     public ConversionResponse convert(ConversionRequest request) {
@@ -43,6 +45,8 @@ public class CurrencyConversionService {
         // unambiguous, so we normalise it instead of rejecting it.
         String source = request.sourceCurrency().toUpperCase(Locale.ROOT);
         String target = request.targetCurrency().toUpperCase(Locale.ROOT);
+
+        metrics.recordConversionRequest(source, target);
 
         // Validate both codes before touching swop.cx — 422 is cheaper than an API call.
         resolveCurrency(source);

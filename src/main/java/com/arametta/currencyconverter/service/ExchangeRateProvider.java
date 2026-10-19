@@ -1,6 +1,7 @@
 package com.arametta.currencyconverter.service;
 
 import com.arametta.currencyconverter.client.SwopClient;
+import io.micrometer.core.instrument.Timer;
 import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,14 +30,24 @@ public class ExchangeRateProvider {
     private static final Logger log = LoggerFactory.getLogger(ExchangeRateProvider.class);
 
     private final SwopClient swopClient;
+    private final ConversionMetrics metrics;
 
-    public ExchangeRateProvider(SwopClient swopClient) {
+    public ExchangeRateProvider(SwopClient swopClient, ConversionMetrics metrics) {
         this.swopClient = swopClient;
+        this.metrics = metrics;
     }
 
+    // Timer only fires on cache misses — we want swop.cx latency, not cache hit latency.
     @Cacheable(value = "exchangeRates", key = "#currencyCode")
     public BigDecimal getEurRate(String currencyCode) {
         log.debug("Cache miss — fetching EUR/{} from swop.cx", currencyCode);
-        return swopClient.getEurRate(currencyCode);
+        Timer.Sample sample = metrics.startSwopTimer();
+        try {
+            return swopClient.getEurRate(currencyCode);
+        } finally {
+            // Recorded for both success and failure paths — failure latency
+            // is just as useful as success latency for monitoring.
+            metrics.stopSwopTimer(sample);
+        }
     }
 }

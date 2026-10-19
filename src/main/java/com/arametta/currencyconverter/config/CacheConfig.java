@@ -12,6 +12,8 @@ import org.springframework.context.annotation.Primary;
  * Caffeine cache for exchange rates:
  *   exchangeRates — 5 min, max 500 entries. FX rates move; 5 min is
  *                   short enough to stay fresh, long enough to absorb bursts.
+ *
+ * recordStats() feeds the cache.hit.rate gauge.
  */
 @Configuration
 public class CacheConfig {
@@ -27,6 +29,7 @@ public class CacheConfig {
                 Caffeine.newBuilder()
                         .expireAfterWrite(Duration.ofMinutes(5))
                         .maximumSize(500)
+                        .recordStats() // required for the cache.hit.rate gauge
                         .build());
 
         return manager;

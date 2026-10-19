@@ -28,6 +28,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class CurrencyConversionServiceTest {
 
     @Mock ExchangeRateProvider rateProvider;
+    @Mock ConversionMetrics metrics;
     @InjectMocks CurrencyConversionService service;
 
     // ---- cross-rate math --------------------------------------------------

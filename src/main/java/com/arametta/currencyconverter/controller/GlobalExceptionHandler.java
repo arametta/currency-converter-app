@@ -3,6 +3,7 @@ package com.arametta.currencyconverter.controller;
 import com.arametta.currencyconverter.client.ExchangeRateUnavailableException;
 import com.arametta.currencyconverter.client.UnknownCurrencyException;
 import com.arametta.currencyconverter.model.ErrorResponse;
+import com.arametta.currencyconverter.service.ConversionMetrics;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +30,12 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    private final ConversionMetrics metrics;
+
+    public GlobalExceptionHandler(ConversionMetrics metrics) {
+        this.metrics = metrics;
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidation(MethodArgumentNotValidException ex) {
         // Build a flat list of "field: message" strings — easy for any client
@@ -37,6 +44,10 @@ public class GlobalExceptionHandler {
         List<String> errors = ex.getBindingResult().getFieldErrors().stream()
                 .map(f -> f.getField() + ": " + f.getDefaultMessage())
                 .toList();
+        // One metric increment per failing field — lets the dashboard show
+        // *which* fields fail most often, not just an opaque error count.
+        ex.getBindingResult().getFieldErrors()
+                .forEach(f -> metrics.recordValidationError(f.getField()));
         log.warn("Validation failed: {}", errors);
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
@@ -67,6 +78,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ExchangeRateUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleUnavailable(ExchangeRateUnavailableException ex) {
+        // Every translated swop.cx failure (4xx, 5xx, timeout, empty body)
+        // funnels through this handler, so the counter is incremented exactly
+        // once per upstream failure — no risk of double-counting in the
+        // client and the handler.
+        metrics.recordSwopError();
         log.error("Exchange rate unavailable: {}", ex.getMessage());
         return ResponseEntity
                 .status(HttpStatus.SERVICE_UNAVAILABLE)
