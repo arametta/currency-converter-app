@@ -1,7 +1,10 @@
 package com.arametta.currencyconverter.client;
 
+import com.arametta.currencyconverter.model.SwopCurrencyResponse;
 import com.arametta.currencyconverter.model.SwopRateResponse;
 import java.math.BigDecimal;
+import java.util.Arrays;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -105,6 +108,52 @@ public class SwopClient {
         } catch (ResourceAccessException e) {
             // Connect failure, read timeout, DNS, etc.
             log.error("swop.cx unreachable for EUR/{}: {}", currencyCode, e.getMessage());
+            throw new ExchangeRateUnavailableException(
+                    "Exchange rate provider is unreachable", e);
+        }
+    }
+
+    public List<SwopCurrencyResponse> getCurrencies() {
+        String url = UriComponentsBuilder.fromUriString(baseUrl)
+                .pathSegment("rest", "currencies")
+                .toUriString();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.AUTHORIZATION, "ApiKey " + apiKey);
+        headers.set(HttpHeaders.ACCEPT, "application/json");
+
+        try {
+            // Array deserialisation is simpler than ParameterizedTypeReference
+            // for a JSON top-level array and avoids the anonymous-subclass
+            // boilerplate. Arrays.asList wraps without copying.
+            ResponseEntity<SwopCurrencyResponse[]> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    new HttpEntity<>(headers),
+                    SwopCurrencyResponse[].class);
+
+            SwopCurrencyResponse[] body = response.getBody();
+            if (body == null) {
+                log.error("swop.cx returned empty body for /rest/currencies");
+                throw new ExchangeRateUnavailableException(
+                        "Exchange rate provider returned an empty currency list");
+            }
+            return Arrays.asList(body);
+
+        } catch (HttpClientErrorException e) {
+            log.error("swop.cx returned client error {} for /rest/currencies",
+                    e.getStatusCode());
+            throw new ExchangeRateUnavailableException(
+                    "Exchange rate provider rejected the request: " + e.getStatusCode(), e);
+
+        } catch (HttpServerErrorException e) {
+            log.error("swop.cx returned server error {} for /rest/currencies",
+                    e.getStatusCode());
+            throw new ExchangeRateUnavailableException(
+                    "Exchange rate provider is currently unavailable", e);
+
+        } catch (ResourceAccessException e) {
+            log.error("swop.cx unreachable for /rest/currencies: {}", e.getMessage());
             throw new ExchangeRateUnavailableException(
                     "Exchange rate provider is unreachable", e);
         }

@@ -9,16 +9,21 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 /**
- * Caffeine cache for exchange rates:
+ * Two Caffeine caches with different TTLs:
  *   exchangeRates — 5 min, max 500 entries. FX rates move; 5 min is
  *                   short enough to stay fresh, long enough to absorb bursts.
+ *   currencies    — 24h, max 1 entry. The ISO currency list is stable;
+ *                   no point hitting swop.cx more than once a day for it.
  *
- * recordStats() feeds the cache.hit.rate gauge.
+ * registerCustomCache is used (not setCaffeine) because each cache needs
+ * its own TTL — setCaffeine applies one config to everything.
+ * recordStats() only on exchangeRates — the cache.hit.rate gauge reads from it.
  */
 @Configuration
 public class CacheConfig {
 
     public static final String EXCHANGE_RATES_CACHE = "exchangeRates";
+    public static final String CURRENCIES_CACHE = "currencies";
 
     @Bean
     @Primary
@@ -30,6 +35,12 @@ public class CacheConfig {
                         .expireAfterWrite(Duration.ofMinutes(5))
                         .maximumSize(500)
                         .recordStats() // required for the cache.hit.rate gauge
+                        .build());
+
+        manager.registerCustomCache(CURRENCIES_CACHE,
+                Caffeine.newBuilder()
+                        .expireAfterWrite(Duration.ofHours(24))
+                        .maximumSize(1)
                         .build());
 
         return manager;

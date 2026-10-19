@@ -2,9 +2,13 @@ package com.arametta.currencyconverter.controller;
 
 import com.arametta.currencyconverter.model.ConversionRequest;
 import com.arametta.currencyconverter.model.ConversionResponse;
+import com.arametta.currencyconverter.model.CurrencyInfo;
 import com.arametta.currencyconverter.service.CurrencyConversionService;
+import com.arametta.currencyconverter.service.CurrencyService;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -25,9 +29,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class CurrencyConversionController {
 
     private final CurrencyConversionService conversionService;
+    private final CurrencyService currencyService;
 
-    public CurrencyConversionController(CurrencyConversionService conversionService) {
+    public CurrencyConversionController(
+            CurrencyConversionService conversionService,
+            CurrencyService currencyService) {
         this.conversionService = conversionService;
+        this.currencyService = currencyService;
     }
 
     /**
@@ -38,4 +46,12 @@ public class CurrencyConversionController {
         return ResponseEntity.ok(conversionService.convert(request));
     }
 
+    /**
+     * Returns a list of all available currencies.
+     * Cached 24h. API key stays on the server — frontend fetches from here, not swop.cx directly.
+     */
+    @GetMapping("/currencies")
+    public ResponseEntity<List<CurrencyInfo>> currencies() {
+        return ResponseEntity.ok(currencyService.getAvailableCurrencies());
+    }
 }
