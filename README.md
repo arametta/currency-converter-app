@@ -125,6 +125,13 @@ npm run dev
 The dev server runs on `http://localhost:5173`. The backend must be running
 first — the frontend calls it directly and CORS is configured for `:5173`.
 
+Frontend tests run with Vitest:
+
+```bash
+cd frontend
+npm test
+```
+
 ## Usage with curl
 
 ```bash
@@ -286,6 +293,8 @@ src/test/java/com/arametta/currencyconverter/
 frontend/
   src/App.vue
   src/main.js
+  src/api/currencyApi.js                  — fetch calls + error envelope handling
+  src/utils/format.js                     — Intl.NumberFormat helper
   index.html
   vite.config.js
   package.json

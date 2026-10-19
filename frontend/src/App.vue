@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-
-const API_BASE = 'http://localhost:8080'
+import { convert as requestConversion, fetchCurrencies } from './api/currencyApi'
+import { formatCurrency } from './utils/format'
 
 // ---- Currency list state ---------------------------------------------------
 const currencies = ref([])
@@ -24,9 +24,7 @@ const convertError = ref(null)
 // surface), so the failure mode is end-to-end visible.
 onMounted(async () => {
   try {
-    const response = await fetch(`${API_BASE}/api/currencies`)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    currencies.value = await response.json()
+    currencies.value = await fetchCurrencies()
     source.value = 'EUR'
     target.value = 'USD'
   } catch (e) {
@@ -44,26 +42,13 @@ async function convert() {
   convertError.value = null
 
   try {
-    const response = await fetch(`${API_BASE}/api/convert`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        amount: amount.value,
-        sourceCurrency: source.value,
-        targetCurrency: target.value
-      })
+    result.value = await requestConversion({
+      amount: amount.value,
+      sourceCurrency: source.value,
+      targetCurrency: target.value
     })
-    const body = await response.json()
-    if (response.ok) {
-      result.value = body
-    } else {
-      // Backend's uniform error envelope: { status, errors: [...] }.
-      // Join messages so a single field can render them inline.
-      convertError.value = (body.errors || [`Request failed: ${response.status}`]).join('; ')
-    }
   } catch (e) {
-    // Network failure, CORS rejection, DNS — any pre-response error.
-    convertError.value = 'Network error — is the API running on :8080?'
+    convertError.value = e.message
   } finally {
     converting.value = false
   }
@@ -79,14 +64,9 @@ function swap() {
   convertError.value = null
 }
 
-// Browser-side locale-aware formatting via Intl.NumberFormat.
-// undefined locale = use the browser's default.
 const formattedAmount = computed(() =>
   result.value
-    ? new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency: result.value.targetCurrency
-      }).format(result.value.convertedAmount)
+    ? formatCurrency(result.value.convertedAmount, result.value.targetCurrency)
     : ''
 )
 </script>
