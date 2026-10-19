@@ -294,6 +294,8 @@ frontend/
   src/App.vue
   src/main.js
   src/api/currencyApi.js                  — fetch calls + error envelope handling
+  src/composables/useCurrencies.js        — currency list + loading / error state
+  src/composables/useConversion.js        — form values, conversion state, swap()
   src/utils/format.js                     — Intl.NumberFormat helper
   index.html
   vite.config.js
