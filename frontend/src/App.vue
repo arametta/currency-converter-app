@@ -16,6 +16,7 @@ const {
   source,
   target,
   amount,
+  amountError,
   converting,
   result,
   error: convertError,
@@ -46,6 +47,7 @@ onMounted(async () => {
       :loading-currencies="loadingCurrencies"
       :currencies-error="currenciesError"
       :converting="converting"
+      :amount-error="amountError"
       @submit="convert"
       @swap="swap"
     />

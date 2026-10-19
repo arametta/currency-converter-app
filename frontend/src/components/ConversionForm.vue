@@ -5,7 +5,9 @@ defineProps({
   currencies: { type: Array, default: () => [] },
   loadingCurrencies: { type: Boolean, default: false },
   currenciesError: { type: Boolean, default: false },
-  converting: { type: Boolean, default: false }
+  converting: { type: Boolean, default: false },
+  // Validation message for the amount, or null when it is valid.
+  amountError: { type: String, default: null }
 })
 
 defineEmits(['submit', 'swap'])
@@ -49,10 +51,21 @@ const amount = defineModel('amount', { type: [Number, String], default: '' })
 
     <div class="field">
       <label for="amount">Amount</label>
-      <input id="amount" type="number" v-model.number="amount" min="0" max="999999999999.99" step="0.001" />
+      <!-- min matches step: the smallest positive amount the input allows. -->
+      <input
+        id="amount"
+        type="number"
+        v-model.number="amount"
+        min="0.001"
+        max="999999999999.99"
+        step="0.001"
+        :aria-invalid="amountError !== null"
+        :aria-describedby="amountError ? 'amount-error' : undefined"
+      />
+      <p v-if="amountError" id="amount-error" class="field-error">{{ amountError }}</p>
     </div>
 
-    <button type="submit" :disabled="converting">
+    <button type="submit" :disabled="converting || amountError !== null">
       {{ converting ? 'Converting...' : 'Convert' }}
     </button>
   </form>
@@ -80,6 +93,12 @@ input {
   border: 1px solid #ccc;
   border-radius: 4px;
   background: white;
+}
+
+.field-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #c62828;
 }
 
 button {

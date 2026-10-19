@@ -307,6 +307,7 @@ frontend/
   src/components/ConversionForm.vue       — dropdowns, swap button, amount, submit
   src/components/ConversionResult.vue     — formatted result or error message
   src/utils/format.js                     — Intl.NumberFormat helper
+  src/utils/validation.js                 — amount rules, mirroring the backend
   .env.example                            — VITE_API_BASE template
   index.html
   vite.config.js
@@ -362,8 +363,9 @@ locale automatically.
 **Amount is capped at 999,999,999,999.99 via `@DecimalMax`.** No realistic
 currency conversion needs more than a trillion units. Without a cap, 
 very large numbers cause rendering issues in the frontend. The browser 
-displays them in scientific notation. The UI mirrors it with
-`max="999999999999.99"` as a hint.
+displays them in scientific notation. The UI checks the same rules as the
+backend (amount required, greater than 0, at most the cap), shows the
+reason under the field and keeps Convert disabled until the amount is valid.
 
 **`GET /api/currencies` proxied through the backend.** The frontend needs
 a currency list for the dropdowns. Fetching it directly from swop.cx in

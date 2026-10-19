@@ -66,6 +66,32 @@ describe('useConversion', () => {
     expect(conversion.converting.value).toBe(false)
   })
 
+  it('is valid for the default amount', () => {
+    const conversion = useConversion()
+
+    expect(conversion.amountError.value).toBeNull()
+    expect(conversion.isValid.value).toBe(true)
+  })
+
+  it('flags an invalid amount', () => {
+    const conversion = useConversion()
+
+    conversion.amount.value = 0
+
+    expect(conversion.amountError.value).toBe('Amount must be greater than 0')
+    expect(conversion.isValid.value).toBe(false)
+  })
+
+  it('does not send a request while the amount is invalid', async () => {
+    const conversion = useConversion()
+    conversion.amount.value = ''
+
+    await conversion.convert()
+
+    expect(requestConversion).not.toHaveBeenCalled()
+    expect(conversion.converting.value).toBe(false)
+  })
+
   it('swaps source and target and clears the stale result', () => {
     const conversion = useConversion()
     conversion.source.value = 'EUR'

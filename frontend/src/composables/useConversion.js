@@ -1,5 +1,6 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { convert as requestConversion } from '../api/currencyApi'
+import { validateAmount } from '../utils/validation'
 
 // Form values plus the state of the latest conversion request.
 export function useConversion() {
@@ -11,7 +12,15 @@ export function useConversion() {
   const result = ref(null)
   const error = ref(null)
 
+  const amountError = computed(() => validateAmount(amount.value))
+  const isValid = computed(() => amountError.value === null)
+
   async function convert() {
+    // The submit button is disabled too; this also covers programmatic calls.
+    if (!isValid.value) {
+      return
+    }
+
     // Clear any previous result/error so the UI doesn't show stale state
     // while the new request is in flight.
     converting.value = true
@@ -41,5 +50,16 @@ export function useConversion() {
     error.value = null
   }
 
-  return { source, target, amount, converting, result, error, convert, swap }
+  return {
+    source,
+    target,
+    amount,
+    amountError,
+    isValid,
+    converting,
+    result,
+    error,
+    convert,
+    swap
+  }
 }
