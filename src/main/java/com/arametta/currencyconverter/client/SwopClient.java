@@ -17,7 +17,8 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 /**
- * HTTP adapter for the swop.cx single-pair rate endpoint.
+ * HTTP adapter for swop.cx. Always fetches EUR-based rates —
+ * the free tier doesn't support other base currencies.
  * Translates HTTP failures into domain exceptions so callers
  * don't need to know about RestTemplate.
  */
@@ -25,6 +26,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class SwopClient {
 
     private static final Logger log = LoggerFactory.getLogger(SwopClient.class);
+    private static final String EUR = "EUR";
 
     // All injected dependencies are final + constructor-injected.
     private final RestTemplate restTemplate;
@@ -41,12 +43,20 @@ public class SwopClient {
     }
 
     /**
-     * Fetches the baseCurrency → quoteCurrency exchange rate from swop.cx.
+     * Fetches the EUR → currencyCode exchange rate from swop.cx.
+     *
+     * Returns BigDecimal.ONE for "EUR" without making any HTTP call —
+     * the EUR/EUR rate is always 1 by definition and skipping the call also
+     * saves an API-quota credit.
      */
-    public BigDecimal getExchangeRate(String baseCurrency, String quoteCurrency) {
+    public BigDecimal getEurRate(String currencyCode) {
+        if (EUR.equals(currencyCode)) {
+            return BigDecimal.ONE;
+        }
+
         // URL-encodes path segments and prevents injection into the upstream URL.
         String url = UriComponentsBuilder.fromUriString(baseUrl)
-                .pathSegment("rest", "rates", baseCurrency, quoteCurrency)
+                .pathSegment("rest", "rates", EUR, currencyCode)
                 .toUriString();
 
         HttpHeaders headers = new HttpHeaders();
@@ -63,30 +73,38 @@ public class SwopClient {
 
             SwopRateResponse body = response.getBody();
             if (body == null || body.quote() == null) {
-                log.error("swop.cx returned empty body for {}/{}", baseCurrency, quoteCurrency);
+                log.error("swop.cx returned empty body for EUR/{}", currencyCode);
                 throw new ExchangeRateUnavailableException(
                         "Exchange rate provider returned an empty response");
             }
             return body.quote();
 
+        } catch (HttpClientErrorException.NotFound e) {
+            // 404 specifically signals "currency code unknown to swop.cx".
+            // The ISO code may be valid in Java's Currency table but not in
+            // swop.cx's supported set — treat that as 422 to the caller, not
+            // 503: the upstream is fine, the input is the problem.
+            log.warn("swop.cx has no rate for EUR/{}: {}", currencyCode, e.getStatusCode());
+            throw new UnknownCurrencyException(
+                    "Currency not supported by exchange rate provider: " + currencyCode, e);
+
         } catch (HttpClientErrorException e) {
-            // 4xx — bad API key, rate-limited, malformed request. From the
-            // caller's perspective the upstream is "not currently usable".
-            log.error("swop.cx returned client error {} for {}/{}",
-                    e.getStatusCode(), baseCurrency, quoteCurrency);
+            // Other 4xx — bad API key, rate-limited, malformed request. From
+            // the caller's perspective the upstream is "not currently usable".
+            log.error("swop.cx returned client error {} for EUR/{}",
+                    e.getStatusCode(), currencyCode);
             throw new ExchangeRateUnavailableException(
                     "Exchange rate provider rejected the request: " + e.getStatusCode(), e);
 
         } catch (HttpServerErrorException e) {
-            log.error("swop.cx returned server error {} for {}/{}",
-                    e.getStatusCode(), baseCurrency, quoteCurrency);
+            log.error("swop.cx returned server error {} for EUR/{}",
+                    e.getStatusCode(), currencyCode);
             throw new ExchangeRateUnavailableException(
                     "Exchange rate provider is currently unavailable", e);
 
         } catch (ResourceAccessException e) {
             // Connect failure, read timeout, DNS, etc.
-            log.error("swop.cx unreachable for {}/{}: {}",
-                    baseCurrency, quoteCurrency, e.getMessage());
+            log.error("swop.cx unreachable for EUR/{}: {}", currencyCode, e.getMessage());
             throw new ExchangeRateUnavailableException(
                     "Exchange rate provider is unreachable", e);
         }

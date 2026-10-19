@@ -1,5 +1,6 @@
 package com.arametta.currencyconverter.service;
 
+import com.arametta.currencyconverter.client.UnknownCurrencyException;
 import com.arametta.currencyconverter.model.ConversionRequest;
 import com.arametta.currencyconverter.model.ConversionResponse;
 import java.math.BigDecimal;
@@ -14,13 +15,20 @@ import org.springframework.stereotype.Service;
 
 /**
  * Handles a single conversion request. Normalises currency codes,
- * short-circuits same-currency pairs, and applies the source→target
- * rate from swop.cx. All caching happens in ExchangeRateProvider.
+ * short-circuits same-currency pairs, and derives the source→target
+ * rate via EUR: effectiveRate = eurToTarget / eurToSource.
+ * All caching happens in ExchangeRateProvider.
  */
 @Service
 public class CurrencyConversionService {
 
     private static final Logger log = LoggerFactory.getLogger(CurrencyConversionService.class);
+
+    // Intermediate precision for the EUR-based division. The result is later
+    // re-scaled to the target currency's default fraction digits, so we just
+    // need enough head-room here that the rounding step at the end isn't
+    // distorted by truncation in the division. 10 dp is comfortable.
+    private static final int CROSS_RATE_SCALE = 10;
 
     // Calling a separate bean (rather than a method on `this`) is required for
     // @Cacheable to fire — see ExchangeRateProvider for the explanation.
@@ -53,14 +61,26 @@ public class CurrencyConversionService {
                     BigDecimal.ONE);
         }
 
-        BigDecimal rate = rateProvider.getExchangeRate(source, target);
+        // Both lookups are cached per single currency code, so EUR→X and
+        // X→EUR each cost one upstream call, X→Y costs at most two, and any
+        // subsequent pair sharing a currency is fully cache-served.
+        BigDecimal eurToSource = rateProvider.getEurRate(source);
+        BigDecimal eurToTarget = rateProvider.getEurRate(target);
 
-        BigDecimal converted = scale(amount.multiply(rate), targetIso);
+        // Effective source → target rate via EUR. setScale before multiply
+        // so the rate we expose has bounded precision; multiply then re-scales
+        // to the target currency's fraction digits.
+        BigDecimal effectiveRate = eurToTarget.divide(
+                eurToSource, CROSS_RATE_SCALE, RoundingMode.HALF_UP);
+
+        BigDecimal converted = scale(amount.multiply(effectiveRate), targetIso);
         String formatted = format(converted, targetIso);
 
-        log.info("Converted {} {} → {} {} (rate {})", amount, source, converted, target, rate);
+        log.info("Converted {} {} → {} {} (rate {})",
+                amount, source, converted, target, effectiveRate);
 
-        return new ConversionResponse(amount, source, target, converted, formatted, rate);
+        return new ConversionResponse(
+                amount, source, target, converted, formatted, effectiveRate);
     }
 
     private Currency resolveCurrency(String code) {

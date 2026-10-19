@@ -1,8 +1,8 @@
 package com.arametta.currencyconverter.controller;
 
 import com.arametta.currencyconverter.client.ExchangeRateUnavailableException;
+import com.arametta.currencyconverter.client.UnknownCurrencyException;
 import com.arametta.currencyconverter.model.ErrorResponse;
-import com.arametta.currencyconverter.service.UnknownCurrencyException;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

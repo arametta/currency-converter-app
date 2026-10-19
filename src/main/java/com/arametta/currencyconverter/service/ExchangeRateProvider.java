@@ -12,11 +12,16 @@ import org.springframework.stereotype.Component;
  *
  * Why is this a separate bean instead of a method on CurrencyConversionService?
  * Spring's @Cacheable is implemented via AOP proxies. Self-invocation —
- * e.g. CurrencyConversionService.convert() calling this.getExchangeRate() —
+ * e.g. CurrencyConversionService.convert() calling this.getEurRate() —
  * goes through the actual object reference, not the proxy, so the cache
  * advice never fires. Putting the @Cacheable method on a separate Spring bean
  * means CurrencyConversionService always reaches it through the proxy, and
  * the cache works as intended.
+ *
+ * Cache key is a single currency code (e.g. "USD"), not a pair. Since every
+ * lookup is anchored on EUR, the same EUR-based rate is reusable across any
+ * pair involving that currency. After USD→GBP populates "USD" and "GBP",
+ * a subsequent USD→EUR or GBP→USD is satisfied entirely from cache.
  */
 @Component
 public class ExchangeRateProvider {
@@ -29,9 +34,9 @@ public class ExchangeRateProvider {
         this.swopClient = swopClient;
     }
 
-    @Cacheable(value = "exchangeRates", key = "#baseCurrency + '_' + #quoteCurrency")
-    public BigDecimal getExchangeRate(String baseCurrency, String quoteCurrency) {
-        log.debug("Cache miss — fetching {}/{} from swop.cx", baseCurrency, quoteCurrency);
-        return swopClient.getExchangeRate(baseCurrency, quoteCurrency);
+    @Cacheable(value = "exchangeRates", key = "#currencyCode")
+    public BigDecimal getEurRate(String currencyCode) {
+        log.debug("Cache miss — fetching EUR/{} from swop.cx", currencyCode);
+        return swopClient.getEurRate(currencyCode);
     }
 }
