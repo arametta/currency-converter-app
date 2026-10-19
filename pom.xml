@@ -20,6 +20,7 @@
 
     <properties>
         <java.version>21</java.version>
+        <wiremock.version>3.0.1</wiremock.version>
     </properties>
 
     <dependencies>
@@ -49,6 +50,15 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <!-- The -standalone jar shades WireMock's own Jetty. The plain
+                 artifact pulls in a Jetty version that clashes with the one
+                 managed by Spring Boot 3.4 and fails at class-load time. -->
+            <groupId>com.github.tomakehurst</groupId>
+            <artifactId>wiremock-jre8-standalone</artifactId>
+            <version>${wiremock.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
