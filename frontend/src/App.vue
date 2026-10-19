@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const API_BASE = 'http://localhost:8080'
 
@@ -78,6 +78,17 @@ function swap() {
   result.value = null
   convertError.value = null
 }
+
+// Browser-side locale-aware formatting via Intl.NumberFormat.
+// undefined locale = use the browser's default.
+const formattedAmount = computed(() =>
+  result.value
+    ? new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: result.value.targetCurrency
+      }).format(result.value.convertedAmount)
+    : ''
+)
 </script>
 
 <template>
@@ -129,7 +140,7 @@ function swap() {
     </form>
 
     <div v-if="result" class="result">
-      <p class="amount">{{ result.formattedAmount }}</p>
+      <p class="amount">{{ formattedAmount }}</p>
       <p class="rate">
         1 {{ result.sourceCurrency }} = {{ result.exchangeRate }} {{ result.targetCurrency }}
       </p>
