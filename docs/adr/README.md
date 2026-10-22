@@ -9,6 +9,7 @@ and what it costs. Code shows what we did; these files show why.
 | [0002](0002-cache-rates-per-currency-with-caffeine.md) | Cache rates per currency with Caffeine | Accepted |
 | [0003](0003-restclient-for-swop-calls.md) | Use RestClient for calls to swop.cx | Accepted |
 | [0004](0004-validate-currencies-against-swop-list.md) | Validate currencies against the swop.cx list before any rate lookup | Accepted |
+| [0005](0005-keep-swop-integration-in-client-package.md) | Keep all swop.cx integration code in the client package | Accepted |
 
 ## Writing a new ADR
 
