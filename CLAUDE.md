@@ -22,6 +22,11 @@ as the API contract.
 - Do not add new dependencies without asking.
 - Do not change the API contract (paths, request/response fields, error envelope,
   status codes) unless I ask for it.
+- If I say "you decide", that covers implementation choices for the current task.
+  It does not cover marking an ADR as Accepted, editing anything in "Do not touch
+  without asking", adding dependencies, or changing the API contract. Those always
+  need my explicit OK, even after "you decide".
+- New ADRs are always written with status Proposed. Only I change the status.
 
 ## Commands
 
@@ -99,6 +104,10 @@ I ask for it.
   cannot be loaded (then it is 503).
 - **swop.cx free tier.** It only supports EUR as base. Rates are fetched EUR-based
   and converted with a cross rate. Keep it that way.
+- **External APIs.** Never assume the shape of a swop.cx endpoint or response from
+  memory. If you need an endpoint that is not used in the code yet, ask me for the
+  docs or a real sample response first. WireMock tests only prove the code matches
+  the stub, not the real API.
 - **Caching.** Cache names and TTLs are set in `CacheConfig` (rates 5 min,
   currencies 24 h). Do not move them to `application.properties`.
 - **Money.** Use `BigDecimal` for amounts and rates, never `double`. The maximum
