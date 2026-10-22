@@ -1,4 +1,4 @@
-package com.arametta.currencyconverter.config;
+package com.arametta.currencyconverter.client;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;

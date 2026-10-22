@@ -11,8 +11,6 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.arametta.currencyconverter.config.SwopClientConfig;
-import com.arametta.currencyconverter.config.SwopProperties;
 import com.arametta.currencyconverter.model.SwopCurrencyResponse;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;

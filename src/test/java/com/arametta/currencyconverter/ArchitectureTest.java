@@ -58,11 +58,11 @@ class ArchitectureTest {
             .because("model classes are plain records shared by every layer");
 
     @ArchTest
-    static final ArchRule only_client_and_config_use_rest_client = noClasses()
-            .that().resideOutsideOfPackages(ROOT + ".client..", ROOT + ".config..")
+    static final ArchRule only_client_uses_rest_client = noClasses()
+            .that().resideOutsideOfPackage(ROOT + ".client..")
             .should().dependOnClassesThat().haveFullyQualifiedName(
                     "org.springframework.web.client.RestClient")
-            .because("only SwopClient calls swop.cx, using the RestClient bean from SwopClientConfig");
+            .because("all swop.cx code lives in the client package, see ADR 0005");
 
     @ArchTest
     static final ArchRule no_old_http_clients = noClasses()

@@ -274,6 +274,8 @@ src/main/java/com/arametta/currencyconverter/
     ConversionMetrics.java                — Micrometer counters / timer / gauge
   client/
     SwopClient.java                       — RestClient calls to swop.cx
+    SwopClientConfig.java                 — RestClient: base URL, auth header, timeouts
+    SwopProperties.java                   — validated swop.* settings
     UnknownCurrencyException.java         — 422
     ExchangeRateUnavailableException.java — 503
   model/
@@ -285,17 +287,15 @@ src/main/java/com/arametta/currencyconverter/
     ErrorResponse.java
   config/
     CacheConfig.java                      — two caches: rates 5min, currencies 24h
-    SwopClientConfig.java                 — RestClient: base URL, auth header, timeouts
-    SwopProperties.java                   — validated swop.* settings
     WebMvcConfig.java                     — CORS for localhost:5173
 
 src/test/java/com/arametta/currencyconverter/
-  config/SwopPropertiesTest.java
   model/ConversionRequestValidationTest.java
   service/CurrencyConversionServiceTest.java
   service/CurrencyServiceTest.java
   service/SupportedCurrenciesTest.java
   client/SwopClientTest.java
+  client/SwopPropertiesTest.java
   controller/CurrencyConversionControllerIntegrationTest.java
 
 frontend/

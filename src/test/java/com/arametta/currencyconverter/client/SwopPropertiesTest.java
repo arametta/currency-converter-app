@@ -1,4 +1,4 @@
-package com.arametta.currencyconverter.config;
+package com.arametta.currencyconverter.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 

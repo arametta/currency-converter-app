@@ -60,9 +60,9 @@ Package root: `com.arametta.currencyconverter`
 |--------------|----------------------------------------------------------------------|
 | `controller` | REST endpoints and `GlobalExceptionHandler` (maps exceptions to HTTP) |
 | `service`    | Conversion logic, currency list, supported-currency check, metrics   |
-| `client`     | `SwopClient` (the only HTTP code) and its exceptions                  |
+| `client`     | Everything about swop.cx: `SwopClient` (the only HTTP code), its `RestClient` setup, `SwopProperties`, exceptions |
 | `model`      | Records: API request/response, error envelope, swop.cx responses      |
-| `config`     | Spring configuration: RestClient, caches, CORS, `SwopProperties`      |
+| `config`     | App-wide Spring configuration: caches and CORS                        |
 
 ### Dependency rules
 
@@ -73,7 +73,9 @@ I ask for it.
 - `controller` may use `service` and `model`. It may use the exception types from
   `client` only inside `GlobalExceptionHandler`. Controllers never call `SwopClient`.
 - `service` may use `client`, `model` and `config` (for cache names).
-- `client` may use `model` only. It knows nothing about services or controllers.
+- `client` may use `model` only. It knows nothing about services, controllers or
+  `config`. Anything that is about swop.cx (settings, HTTP setup, retries) goes
+  in `client`, not in `config` (ADR 0005).
 - `model` depends on nothing in this project.
 - No package may depend on `controller`.
 - Only `SwopClient` talks to swop.cx over HTTP. Do not create a second HTTP client
@@ -88,7 +90,7 @@ I ask for it.
   did not change.
 - **SpotBugs.** If SpotBugs reports a finding, fix the code. Do not add exclusions to
   `spotbugs-exclude.xml` without asking me. Every exclusion there has a reason.
-- **HTTP client.** Use the `RestClient` bean from `SwopClientConfig`. Never use
+- **HTTP client.** Use the `RestClient` bean from `client.SwopClientConfig`. Never use
   `RestTemplate` or `WebClient`.
 - **Configuration.** swop.cx settings live in the `SwopProperties` record
   (`@ConfigurationProperties("swop")`, validated). Add new settings there, not as

@@ -1,4 +1,4 @@
-package com.arametta.currencyconverter.config;
+package com.arametta.currencyconverter.client;
 
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
