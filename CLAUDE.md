@@ -145,5 +145,12 @@ I ask for it.
 
 ## Design decisions
 
-The reasons behind the main choices are in `docs/adr/`. Read them before changing
-caching, the HTTP client, currency validation or error handling.
+The reasons behind the main choices are in `docs/adr/` (index in `docs/adr/README.md`).
+Read the related ADR before changing caching, the HTTP client, currency validation
+or the exchange-rate calculation.
+
+- If a task goes against an accepted ADR, stop and tell me. Do not change the
+  decision on your own.
+- If a task needs a new design decision, propose a new ADR from
+  `docs/adr/template.md` and wait for my OK before writing the code.
+- Never edit an accepted ADR to change its decision. A new ADR replaces it.
