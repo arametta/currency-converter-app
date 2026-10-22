@@ -26,8 +26,9 @@ as the API contract.
 ## Commands
 
 Backend (from the repo root):
-- Build, run all tests and checks: `./mvnw -B verify` (includes ArchUnit and SpotBugs)
+- Build, run all tests and checks: `./mvnw -B verify` (includes ArchUnit, SpotBugs and the coverage check)
 - Run SpotBugs only: `./mvnw -B compile spotbugs:check` (details in `target/spotbugsXml.xml`)
+- Coverage report after `verify`: `target/site/jacoco/index.html`
 - Run one test class: `./mvnw -B test -Dtest=SwopClientTest`
 - Run only the architecture rules: `./mvnw -B test -Dtest=ArchitectureTest`
 - Run the app: `SWOP_API_KEY=... ./mvnw spring-boot:run` (fails at startup without the key)
@@ -107,6 +108,9 @@ I ask for it.
 - JUnit 5, Mockito and WireMock. Use WireMock for anything that involves swop.cx,
   so the real `RestClient` setup is tested. Do not use `MockRestServiceServer`.
 - New behaviour comes with tests in the same change.
+- The build fails if coverage drops below the minimums in `pom.xml` (JaCoCo:
+  lines 90%, branches 75%). Never lower them, and never add coverage exclusions,
+  to make the build pass. Write the missing tests, or ask me.
 - Never delete or weaken a failing test to make the build pass. If you think a test
   is wrong, tell me why and wait.
 - Tests must not call the real swop.cx.
