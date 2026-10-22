@@ -43,6 +43,10 @@ Frontend (from `frontend/`, needs Node.js 22.12+):
 After every change, run `./mvnw -B verify` (and `npm test` if you touched the
 frontend). A task is not done until both pass.
 
+A Stop hook (`.claude/hooks/verify-on-stop.sh`) runs these checks when you finish,
+if backend or frontend files changed. If it reports a failure, fix the code. Do
+not change or disable the hook or `.claude/settings.json` without asking me.
+
 ## Backend structure
 
 Package root: `com.arametta.currencyconverter`
@@ -134,6 +138,7 @@ I ask for it.
 ## Do not touch without asking
 
 - `.github/workflows/ci.yml`
+- `.claude/settings.json` and `.claude/hooks/`
 - `Dockerfile`, `docker-compose.yml`
 - `grafana/`
 - The README API section
