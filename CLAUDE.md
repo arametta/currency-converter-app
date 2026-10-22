@@ -26,7 +26,8 @@ as the API contract.
 ## Commands
 
 Backend (from the repo root):
-- Build and run all tests: `./mvnw -B verify`
+- Build, run all tests and checks: `./mvnw -B verify` (includes ArchUnit and SpotBugs)
+- Run SpotBugs only: `./mvnw -B compile spotbugs:check` (details in `target/spotbugsXml.xml`)
 - Run one test class: `./mvnw -B test -Dtest=SwopClientTest`
 - Run only the architecture rules: `./mvnw -B test -Dtest=ArchitectureTest`
 - Run the app: `SWOP_API_KEY=... ./mvnw spring-boot:run` (fails at startup without the key)
@@ -70,6 +71,13 @@ I ask for it.
 
 ## Rules for the code
 
+- **Style.** Follow the formatting of the existing code. Break method chains one
+  call per line, and long argument lists one argument per line. Put each validation
+  annotation on its own line, like in `ConversionRequest`; short annotations such as
+  `@JsonProperty("code") String code` stay on one line. Do not reformat code you
+  did not change.
+- **SpotBugs.** If SpotBugs reports a finding, fix the code. Do not add exclusions to
+  `spotbugs-exclude.xml` without asking me. Every exclusion there has a reason.
 - **HTTP client.** Use the `RestClient` bean from `SwopClientConfig`. Never use
   `RestTemplate` or `WebClient`.
 - **Configuration.** swop.cx settings live in the `SwopProperties` record
