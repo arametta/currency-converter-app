@@ -16,6 +16,7 @@ Built as a personal project.
 | Cache       | Caffeine (rates 5min, currencies 24h) |
 | Validation  | Jakarta Bean Validation               |
 | Tests       | JUnit 5 + Mockito + WireMock          |
+| Checks      | ArchUnit, SpotBugs, JaCoCo            |
 | Metrics     | Micrometer → InfluxDB 1.8 → Grafana   |
 
 ## Endpoints
@@ -216,11 +217,25 @@ curl -sS -G http://localhost:8086/query \
 Note: metric names with dots in code (`conversion.requests.total`) become
 underscores in InfluxDB (`conversion_requests_total`).
 
-## Tests
+## Tests and checks
 
 ```bash
-./mvnw test
+./mvnw verify
 ```
+
+This runs the tests and three checks. Any failure fails the build, locally
+and in CI:
+
+- **ArchUnit** (`ArchitectureTest`) checks the package boundaries, for
+  example that controllers never call `SwopClient` and that only the
+  `client` package makes HTTP calls
+- **SpotBugs** looks for likely bugs in the compiled code. Findings that
+  are ignored on purpose are listed, with the reason, in
+  `spotbugs-exclude.xml`
+- **JaCoCo** fails the build if line coverage drops below 90% or branch
+  coverage below 75%. The report is in `target/site/jacoco/index.html`
+
+`./mvnw test` runs only the tests.
 
 - `CurrencyConversionServiceTest` — cross-rate math, rounding, same-currency
   short-circuit, normalisation, supported-currency checks and fallback
@@ -233,8 +248,33 @@ underscores in InfluxDB (`conversion_requests_total`).
 - `CurrencyConversionControllerIntegrationTest` — full Spring Boot context
   with WireMock standing in for swop.cx: happy paths, error mapping,
   caching and metrics
+- `SwopPropertiesTest` — binding and validation of the `swop.*` settings
+- `ArchitectureTest` — the package rules described above
 
 Tests are hermetic — no network calls, no real API key needed.
+
+## Working with an AI agent
+
+I build this project with Claude Code. I make the design decisions and
+review every change. To let the agent work safely on its own, the project
+has guardrails:
+
+- **[`CLAUDE.md`](CLAUDE.md):** the file Claude Code reads first, with the
+  project structure, which package may depend on which, the coding style, the
+  commands, and which decisions it must leave to me
+- **Checks in the build:** the ArchUnit, SpotBugs and coverage checks
+  above turn the most important rules into a failing build, so they don't
+  depend on the agent remembering them
+- **A Stop hook** ([`.claude/hooks/verify-on-stop.sh`](.claude/hooks/verify-on-stop.sh)):
+  when the agent finishes a task that changed code, it runs
+  `./mvnw verify` (and `npm test` for the frontend). If something fails,
+  the agent gets the error and has to fix it before it can finish
+- **Decision records** ([`docs/adr/`](docs/adr/README.md)): the reasons
+  behind the main design choices, so that neither a person nor the agent
+  "improves" a decision without knowing why it was made
+
+I tested the guardrails by giving the agent tasks designed to break the
+rules, and changed the setup based on the results.
 
 ## Configuration
 
@@ -297,6 +337,7 @@ src/test/java/com/arametta/currencyconverter/
   client/SwopClientTest.java
   client/SwopPropertiesTest.java
   controller/CurrencyConversionControllerIntegrationTest.java
+  ArchitectureTest.java                   — ArchUnit rules for package boundaries
 
 frontend/
   src/App.vue                             — composes the pieces, nothing else
@@ -313,9 +354,19 @@ frontend/
   index.html
   vite.config.js
   package.json
+
+docs/adr/                                 — architecture decision records
+CLAUDE.md                                 — instructions for Claude Code
+.claude/settings.json                     — registers the Claude Code hook
+.claude/hooks/verify-on-stop.sh           — runs the checks when the agent finishes
+spotbugs-exclude.xml                      — ignored SpotBugs findings, with reasons
 ```
 
 ## Design decisions
+
+The main decisions, with the alternatives and trade-offs, are recorded as
+ADRs in [`docs/adr/`](docs/adr/README.md). The notes below are the short
+version.
 
 **swop.cx free tier only supports EUR as base currency.** Every upstream
 call uses `GET /rest/rates/EUR/{code}`. For non-EUR pairs the effective
@@ -355,15 +406,15 @@ a code swop.cx supports but Java doesn't know falls back to 2 decimals and
 a neutral format such as `BTC 1,234.50`.
 
 **Formatted amount is rendered with `Intl.NumberFormat` on the frontend.**
-The backend still returns a pre-formatted `formattedAmount` string (using 
+The backend still returns a pre-formatted `formattedAmount` string (using
 `java.text.NumberFormat`) so non-browser clients have something usable, but
 the UI re-formats client-side via the browser's `Intl.NumberFormat`.
 It's the canonical "Web i18n" API and it respects the user's browser
 locale automatically.
 
 **Amount is capped at 999,999,999,999.99 via `@DecimalMax`.** No realistic
-currency conversion needs more than a trillion units. Without a cap, 
-very large numbers cause rendering issues in the frontend. The browser 
+currency conversion needs more than a trillion units. Without a cap,
+very large numbers cause rendering issues in the frontend. The browser
 displays them in scientific notation. The UI checks the same rules as the
 backend (amount required, greater than 0, at most the cap), shows the
 reason under the field and keeps Convert disabled until the amount is valid.
@@ -380,3 +431,10 @@ it for 24 hours since the list rarely changes.
 - Circuit breaker with Resilience4j — if swop.cx is down, return the
   last cached rate rather than an error
 - Rate limiting on the API endpoints
+- A read timeout can sometimes reach the client as a `CancellationException`
+  instead of a `ResourceAccessException`. It is then not mapped to 503 and
+  ends up as a 500. The related `SwopClientTest` timeout test is flaky for
+  the same reason
+- `resolveLocale` loops over every JVM locale on each conversion just to
+  format the result. It is cheap, but it is the largest cost on the cached
+  path and could be computed once per currency
